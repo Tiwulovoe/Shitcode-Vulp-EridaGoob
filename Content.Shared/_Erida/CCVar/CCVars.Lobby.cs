@@ -19,4 +19,30 @@ public sealed partial class ECCVars
     /// </summary>
     public static readonly CVarDef<string> LobbyBackground =
         CVarDef.Create("erida.ui.lobby_background", "LuaMSky2", CVar.CLIENTONLY | CVar.ARCHIVE);
+
+    /// <summary>
+    ///     Lobby layout preset: sidebar, screen or custom.
+    /// </summary>
+    public static readonly CVarDef<string> LobbyLayoutPreset =
+        CVarDef.Create("erida.ui.lobby_layout_preset", "sidebar", CVar.CLIENTONLY | CVar.ARCHIVE);
+
+    /// <summary>
+    ///     Per-element lobby layout for the custom preset, stored as a compact key=value list.
+    /// </summary>
+    public static readonly CVarDef<string> LobbyLayout =
+        CVarDef.Create("erida.ui.lobby_layout", string.Empty, CVar.CLIENTONLY | CVar.ARCHIVE);
+
+    /// <summary>
+    ///     Layout schema version. Bumped when defaults/available placements change so old
+    ///     layouts do not keep obsolete panels or screen placements.
+    /// </summary>
+    public static readonly CVarDef<int> LobbyLayoutVersion =
+        CVarDef.Create("erida.ui.lobby_layout_version", 0, CVar.CLIENTONLY | CVar.ARCHIVE);
+
+    /// <summary>
+    ///     Lobby music defaults version. Used to enable lobby music once for players whose
+    ///     archived settings predate the in-lobby music player.
+    /// </summary>
+    public static readonly CVarDef<int> LobbyMusicDefaultsVersion =
+        CVarDef.Create("erida.ui.lobby_music_defaults_version", 0, CVar.CLIENTONLY | CVar.ARCHIVE);
 }

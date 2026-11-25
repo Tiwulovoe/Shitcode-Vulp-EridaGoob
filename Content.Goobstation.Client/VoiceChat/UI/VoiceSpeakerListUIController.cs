@@ -69,7 +69,7 @@ public sealed partial class VoiceSpeakerListUIController : UIController,
             return;
 
         if (_attachedScreen is LobbyGui lobby)
-            _list.SetInset(lobby.RightSide.Width + Margin, Margin);
+            _list.SetInset(lobby.RightSide.Visible ? lobby.RightSide.Width + Margin : Margin, Margin);
         else
             _list.SetInset(Margin, GameplayBottom);
 

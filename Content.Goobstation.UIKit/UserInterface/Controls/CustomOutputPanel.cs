@@ -190,6 +190,10 @@ public sealed partial class CustomOutputPanel : Control
         }
 
         _scrollBar.ValueTarget -= _getScrollSpeed() * args.Delta.Y;
+
+        // Do not let the wheel event bubble to the lobby's sidebar scroll container.
+        if (_scrollBar.MaxValue > _scrollBar.Page)
+            args.Handle();
     }
 
     protected override void Resized()

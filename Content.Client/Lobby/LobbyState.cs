@@ -43,6 +43,8 @@ namespace Content.Client.Lobby
         private ClientGameTicker _gameTicker = default!;
         private ContentAudioSystem _contentAudioSystem = default!;
         private ReadyManifestSystem _readyManifest = default!; // Impstation - Ready Manifest
+        private bool _updatingLobbyMusicUi;
+        private float _lobbyVolumeBeforeMute = 0.5f;
 
         protected override Type? LinkedScreenType { get; } = typeof(LobbyGui);
         public LobbyGui? Lobby;
@@ -76,15 +78,26 @@ namespace Content.Client.Lobby
                 : lobbyNameCvar;
 
             var width = _cfg.GetCVar(CCVars.ServerLobbyRightPanelWidth);
-            Lobby.RightSide.SetWidth = width;
+            Lobby.RightSide.SetWidth = Math.Clamp(width, 300, 420);
 
             UpdateLobbyUi();
 
             Lobby.CharacterPreview.CharacterSetupButton.OnPressed += OnSetupPressed;
+            Lobby.CharacterSetupButton.OnPressed += OnSetupPressed;
             Lobby.CharacterPreview.PatronPerks.OnPressed += OnPatronPerksPressed;
             Lobby.ReadyButton.OnPressed += OnReadyPressed;
             Lobby.ReadyButton.OnToggled += OnReadyToggled;
             Lobby.ManifestButton.OnPressed += OnManifestPressed; // Impstation - Ready Manifest
+
+            Lobby.LobbyMusicPlayButton.OnPressed += OnLobbyMusicPlayPressed;
+            Lobby.LobbyMusicPrevButton.OnPressed += OnLobbyMusicPrevPressed;
+            Lobby.LobbyMusicNextButton.OnPressed += OnLobbyMusicNextPressed;
+            Lobby.LobbyMusicMuteButton.OnPressed += OnLobbyMusicMutePressed;
+            Lobby.LobbyMusicVolume.OnValueChanged += OnLobbyMusicVolumeChanged;
+            Lobby.LobbyMusicEnabledCheck.OnToggled += OnLobbyMusicEnabledToggled;
+            _contentAudioSystem.LobbyMusicStateChanged += UpdateLobbyMusicPlayer;
+            UpdateLobbyMusicPlayer();
+            _contentAudioSystem.EnsureLobbyMusicPlaying();
 
             _gameTicker.InfoBlobUpdated += UpdateLobbyUi;
             _gameTicker.LobbyStatusUpdated += LobbyStatusUpdated;
@@ -108,10 +121,19 @@ namespace Content.Client.Lobby
             _voteManager.ClearPopupContainer();
 
             Lobby!.CharacterPreview.CharacterSetupButton.OnPressed -= OnSetupPressed;
+            Lobby.CharacterSetupButton.OnPressed -= OnSetupPressed;
             Lobby.CharacterPreview.PatronPerks.OnPressed -= OnPatronPerksPressed;
             Lobby!.ReadyButton.OnPressed -= OnReadyPressed;
             Lobby!.ReadyButton.OnToggled -= OnReadyToggled;
             Lobby!.ManifestButton.OnPressed -= OnManifestPressed; // Impstation - Ready Manifest
+
+            Lobby.LobbyMusicPlayButton.OnPressed -= OnLobbyMusicPlayPressed;
+            Lobby.LobbyMusicPrevButton.OnPressed -= OnLobbyMusicPrevPressed;
+            Lobby.LobbyMusicNextButton.OnPressed -= OnLobbyMusicNextPressed;
+            Lobby.LobbyMusicMuteButton.OnPressed -= OnLobbyMusicMutePressed;
+            Lobby.LobbyMusicVolume.OnValueChanged -= OnLobbyMusicVolumeChanged;
+            Lobby.LobbyMusicEnabledCheck.OnToggled -= OnLobbyMusicEnabledToggled;
+            _contentAudioSystem.LobbyMusicStateChanged -= UpdateLobbyMusicPlayer;
 
             Lobby = null;
         }
@@ -157,6 +179,10 @@ namespace Content.Client.Lobby
         public override void FrameUpdate(FrameEventArgs e)
         {
             UpdateEridaLobbyBackground(e.DeltaSeconds); // Erida edit
+
+            // Keep lobby music playing by default; resumes a paused track or starts one as soon
+            // as the server playlist is available, regardless of state-change event ordering.
+            _contentAudioSystem.EnsureLobbyMusicPlaying();
 
             if (_gameTicker.IsGameStarted)
             {
@@ -329,6 +355,88 @@ namespace Content.Client.Lobby
         private void UpdatePlayerBalance() // Goobstation - Goob Coin
         {
             Lobby!.Balance.Text = _serverCur.Stringify(_serverCur.GetBalance());
+        }
+
+        private void OnLobbyMusicPlayPressed(BaseButton.ButtonEventArgs args)
+        {
+            _contentAudioSystem.ToggleLobbyMusicPaused();
+        }
+
+        private void OnLobbyMusicPrevPressed(BaseButton.ButtonEventArgs args)
+        {
+            _contentAudioSystem.PlayPreviousLobbyTrack();
+        }
+
+        private void OnLobbyMusicNextPressed(BaseButton.ButtonEventArgs args)
+        {
+            _contentAudioSystem.PlayNextLobbyTrack();
+        }
+
+        private void OnLobbyMusicMutePressed(BaseButton.ButtonEventArgs args)
+        {
+            var volume = _contentAudioSystem.GetLobbyMusicVolume();
+
+            if (volume > 0.001f)
+            {
+                _lobbyVolumeBeforeMute = volume;
+                _contentAudioSystem.SetLobbyMusicVolume(0f);
+            }
+            else
+            {
+                _contentAudioSystem.SetLobbyMusicVolume(_lobbyVolumeBeforeMute <= 0.001f ? 0.5f : _lobbyVolumeBeforeMute);
+            }
+        }
+
+        private void OnLobbyMusicVolumeChanged(Robust.Client.UserInterface.Controls.Range range)
+        {
+            if (_updatingLobbyMusicUi)
+                return;
+
+            var volume = Math.Clamp(range.Value / 100f, 0f, 1f);
+            if (volume > 0.001f)
+                _lobbyVolumeBeforeMute = volume;
+
+            _contentAudioSystem.SetLobbyMusicVolume(volume);
+        }
+
+        private void OnLobbyMusicEnabledToggled(BaseButton.ButtonToggledEventArgs args)
+        {
+            if (_updatingLobbyMusicUi)
+                return;
+
+            _contentAudioSystem.SetLobbyMusicEnabled(args.Pressed);
+        }
+
+        /// <summary>
+        /// Enables lobby music once for players whose archived settings were saved before the
+        /// in-lobby player existed, and restores a zero (muted) volume to a sensible default.
+        /// Later explicit changes to the checkbox/volume are respected.
+        /// </summary>
+        private void UpdateLobbyMusicPlayer()
+        {
+            if (Lobby == null)
+                return;
+
+            _updatingLobbyMusicUi = true;
+
+            var enabled = _contentAudioSystem.LobbyMusicEnabled;
+            var paused = _contentAudioSystem.LobbyMusicPaused;
+            var volume = _contentAudioSystem.GetLobbyMusicVolume();
+            var hasTrack = _contentAudioSystem.CurrentLobbySoundtrack != null;
+
+            Lobby.LobbyMusicEnabledCheck.Pressed = enabled;
+            Lobby.LobbyMusicPlayButton.Text = paused || !hasTrack ? "▶" : "II";
+            Lobby.LobbyMusicPlayButton.ToolTip = Loc.GetString(paused || !hasTrack ? "lobby-music-play" : "lobby-music-pause");
+            Lobby.LobbyMusicPlayButton.Disabled = !enabled || !hasTrack;
+            Lobby.LobbyMusicPrevButton.Disabled = !enabled || _contentAudioSystem.LobbyPlaylistLength <= 1;
+            Lobby.LobbyMusicNextButton.Disabled = !enabled || _contentAudioSystem.LobbyPlaylistLength <= 1;
+            Lobby.LobbyMusicMuteButton.Text = volume <= 0.001f ? "♪×" : "♪";
+            Lobby.LobbyMusicMuteButton.ToolTip = Loc.GetString(volume <= 0.001f ? "lobby-music-unmute" : "lobby-music-mute");
+            Lobby.LobbyMusicMuteButton.Disabled = !enabled;
+            Lobby.LobbyMusicVolume.Disabled = !enabled;
+            Lobby.LobbyMusicVolume.SetValueWithoutEvent(volume * 100f);
+
+            _updatingLobbyMusicUi = false;
         }
     }
 }

@@ -16,23 +16,40 @@ namespace Content.Client.Info
     public sealed class LinkBanner : BoxContainer
     {
         private readonly IConfigurationManager _cfg;
+        private readonly BoxContainer _buttons;
 
         private ValueList<(CVarDef<string> cVar, Button button)> _infoLinks;
 
+        /// <summary>
+        /// Direction of the link buttons. The lobby sidebar uses a vertical list that fills the
+        /// sidebar width so the button captions can be centered.
+        /// </summary>
+        public new LayoutOrientation Orientation
+        {
+            get => base.Orientation;
+            set
+            {
+                base.Orientation = value;
+                _buttons.Orientation = value;
+            }
+        }
+
         public LinkBanner()
         {
-            var buttons = new BoxContainer
+            _buttons = new BoxContainer
             {
-                Orientation = LayoutOrientation.Horizontal
+                Orientation = LayoutOrientation.Horizontal,
+                HorizontalExpand = true,
+                SeparationOverride = 2,
             };
-            AddChild(buttons);
+            AddChild(_buttons);
 
             var uriOpener = IoCManager.Resolve<IUriOpener>();
             _cfg = IoCManager.Resolve<IConfigurationManager>();
 
             var rulesButton = new Button() { Text = Loc.GetString("server-info-rules-button") };
             rulesButton.OnPressed += args => new RulesAndInfoWindow().Open();
-            buttons.AddChild(rulesButton);
+            _buttons.AddChild(rulesButton);
 
             AddInfoButton("server-info-discord-button", CCVars.InfoLinksDiscord);
             AddInfoButton("server-info-website-button", CCVars.InfoLinksWebsite);
@@ -47,7 +64,7 @@ namespace Content.Client.Info
                 Text = Loc.GetString("rmc-ui-link-discord-account"),
             };
             linkAccountButton.OnPressed += _ => linkAccount.ToggleWindow();
-            buttons.AddChild(linkAccountButton);
+            _buttons.AddChild(linkAccountButton);
 
             var guidebookController = UserInterfaceManager.GetUIController<GuidebookUIController>();
             var guidebookButton = new Button() { Text = Loc.GetString("server-info-guidebook-button") };
@@ -55,7 +72,7 @@ namespace Content.Client.Info
             {
                 guidebookController.ToggleGuidebook();
             };
-            buttons.AddChild(guidebookButton);
+            _buttons.AddChild(guidebookButton);
 
             // Erida start
             var pollsButton = new Button() { Text = Loc.GetString("server-info-polls-button") };
@@ -63,18 +80,18 @@ namespace Content.Client.Info
             {
                 IoCManager.Resolve<IClientConsoleHost>().ExecuteCommand("polls");
             };
-            buttons.AddChild(pollsButton);
+            _buttons.AddChild(pollsButton);
             // Erida end
 
             var changelogButton = new ChangelogButton();
             changelogButton.OnPressed += args => UserInterfaceManager.GetUIController<ChangelogUIController>().ToggleWindow();
-            buttons.AddChild(changelogButton);
+            _buttons.AddChild(changelogButton);
 
             void AddInfoButton(string loc, CVarDef<string> cVar)
             {
                 var button = new Button { Text = Loc.GetString(loc) };
                 button.OnPressed += _ => uriOpener.OpenUri(_cfg.GetCVar(cVar));
-                buttons.AddChild(button);
+                _buttons.AddChild(button);
                 _infoLinks.Add((cVar, button));
             }
         }
